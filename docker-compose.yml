@@ -1,143 +1,490 @@
-version: '3.8'
-
 services:
-  zookeeper:
-    image: zookeeper:3.7
-    container_name: zookeeper
-    hostname: zookeeper
-    ports:
-      - "2181:2181"
+  # ZooKeeper cluster for HA coordination
+  zookeeper1:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper1
+    container_name: zookeeper1
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-    networks:
-      - hadoop-net
-
-  journalnode:
-    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: journalnode
-    hostname: journalnode
-    environment:
-      - HADOOP_MASTER_SERVICES=journalnode
-      - CLUSTER_NAME=mycluster
-      - HADOOP_CONF_HA_ENABLED=true
-      - HADOOP_CONF_JOURNALNODE_URI=qjournal://journalnode:8485/mycluster
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_SERVERS: zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888
     volumes:
-      - journalnode_data:/hadoop/journalnode
+      - zk1_data:/var/lib/zookeeper/data
+      - zk1_logs:/var/lib/zookeeper/log
     networks:
-      - hadoop-net
+      - hadoop-network
 
+  zookeeper2:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper2
+    container_name: zookeeper2
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVER_ID: 2
+      ZOOKEEPER_SERVERS: zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888
+    volumes:
+      - zk2_data:/var/lib/zookeeper/data
+      - zk2_logs:/var/lib/zookeeper/log
+    networks:
+      - hadoop-network
+
+  zookeeper3:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper3
+    container_name: zookeeper3
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SERVER_ID: 3
+      ZOOKEEPER_SERVERS: zookeeper1:2888:3888;zookeeper2:2888:3888;zookeeper3:2888:3888
+    volumes:
+      - zk3_data:/var/lib/zookeeper/data
+      - zk3_logs:/var/lib/zookeeper/log
+    networks:
+      - hadoop-network
+
+  # JournalNode cluster
+  journalnode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: journalnode1
+    container_name: journalnode1
+    command: ["hdfs", "journalnode"]
+    environment:
+      - SERVICE_PRECONDITION=zookeeper1:2181 zookeeper2:2181 zookeeper3:2181
+      - CLUSTER_NAME=mycluster
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+      - jn1_data:/hadoop/dfs/journal
+    ports:
+      - "8485:8485"
+    networks:
+      - hadoop-network
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+
+  journalnode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: journalnode2
+    container_name: journalnode2
+    command: ["hdfs", "journalnode"]
+    environment:
+      - SERVICE_PRECONDITION=zookeeper1:2181 zookeeper2:2181 zookeeper3:2181
+      - CLUSTER_NAME=mycluster
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+      - jn2_data:/hadoop/dfs/journal
+    ports:
+      - "8486:8485"
+    networks:
+      - hadoop-network
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+
+  journalnode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: journalnode3
+    container_name: journalnode3
+    command: ["hdfs", "journalnode"]
+    environment:
+      - SERVICE_PRECONDITION=zookeeper1:2181 zookeeper2:2181 zookeeper3:2181
+      - CLUSTER_NAME=mycluster
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+      - jn3_data:/hadoop/dfs/journal
+    ports:
+      - "8487:8485"
+    networks:
+      - hadoop-network
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+
+  # NameNode HA setup
   namenode1:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode1
     hostname: namenode1
+    container_name: namenode1
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - HDFS_CONF_dfs_nameservices=mycluster
+      - HDFS_CONF_dfs_ha_namenodes_mycluster=nn1,nn2
+      - HDFS_CONF_dfs_namenode_rpc___address_mycluster_nn1=namenode1:8020
+      - HDFS_CONF_dfs_namenode_rpc___address_mycluster_nn2=namenode2:8020
+      - HDFS_CONF_dfs_namenode_http___address_mycluster_nn1=namenode1:9870
+      - HDFS_CONF_dfs_namenode_http___address_mycluster_nn2=namenode2:9870
+      - HDFS_CONF_dfs_namenode_shared_edits_dir=qjournal://journalnode1:8485;journalnode2:8485;journalnode3:8485/mycluster
+      - HDFS_CONF_dfs_ha_automatic___failover_enabled=true
+      - HDFS_CONF_dfs_ha_fencing_methods=shell(/bin/true)
+      - HDFS_CONF_dfs_journalnode_edits_dir=/hadoop/dfs/journal
+      - HDFS_CONF_dfs_client_failover_proxy_provider_mycluster=org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - FORMAT_NAMENODE=true
+      - SERVICE_PRECONDITION=journalnode1:8485 journalnode2:8485 journalnode3:8485
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+      - nn1_data:/hadoop/dfs/name
     ports:
       - "9870:9870"
       - "8020:8020"
-    environment:
-      - HADOOP_MASTER_SERVICES=namenode
-      - CLUSTER_NAME=mycluster
-      - HADOOP_CONF_HA_ENABLED=true
-      - HADOOP_CONF_NAMENODE_ID=nn1
-      - HADOOP_CONF_JOURNALNODE_URI=qjournal://journalnode:8485/mycluster
-      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
-      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
-    volumes:
-      - namenode1_data:/hadoop/dfs/name
-      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
-    depends_on:
-      - journalnode
-      - zookeeper
     networks:
-      - hadoop-net
+      - hadoop-network
+    depends_on:
+      - journalnode1
+      - journalnode2
+      - journalnode3
 
   namenode2:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode2
     hostname: namenode2
+    container_name: namenode2
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - HDFS_CONF_dfs_nameservices=mycluster
+      - HDFS_CONF_dfs_ha_namenodes_mycluster=nn1,nn2
+      - HDFS_CONF_dfs_namenode_rpc___address_mycluster_nn1=namenode1:8020
+      - HDFS_CONF_dfs_namenode_rpc___address_mycluster_nn2=namenode2:8020
+      - HDFS_CONF_dfs_namenode_http___address_mycluster_nn1=namenode1:9870
+      - HDFS_CONF_dfs_namenode_http___address_mycluster_nn2=namenode2:9870
+      - HDFS_CONF_dfs_namenode_shared_edits_dir=qjournal://journalnode1:8485;journalnode2:8485;journalnode3:8485/mycluster
+      - HDFS_CONF_dfs_ha_automatic___failover_enabled=true
+      - HDFS_CONF_dfs_ha_fencing_methods=shell(/bin/true)
+      - HDFS_CONF_dfs_journalnode_edits_dir=/hadoop/dfs/journal
+      - HDFS_CONF_dfs_client_failover_proxy_provider_mycluster=org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider
+      - HDFS_CONF_dfs_permissions_enabled=false
+      - SERVICE_PRECONDITION=namenode1:9870
+      - BOOTSTRAP_STANDBY=true
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+      - nn2_data:/hadoop/dfs/name
     ports:
       - "9871:9870"
       - "8021:8020"
-    environment:
-      - HADOOP_MASTER_SERVICES=namenode
-      - CLUSTER_NAME=mycluster
-      - HADOOP_CONF_HA_ENABLED=true
-      - HADOOP_CONF_NAMENODE_ID=nn2
-      - HADOOP_CONF_JOURNALNODE_URI=qjournal://journalnode:8485/mycluster
-      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
-      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
-    volumes:
-      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
-      - namenode2_data:/hadoop/dfs/name
-    depends_on:
-      - journalnode
-      - zookeeper
     networks:
-      - hadoop-net
+      - hadoop-network
+    depends_on:
+      - namenode1
 
-  datanode1:
-    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode1
-    hostname: datanode1
+  # ZKFC initialization - formats ZooKeeper state for HA
+  zkfc-init:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    hostname: zkfc-init
+    container_name: zkfc-init
+    command: ["sh", "-c", "hdfs zkfc -formatZK -force && echo 'ZooKeeper state formatted successfully'"]
     environment:
-      - HADOOP_SLAVE_SERVICES=datanode
       - CLUSTER_NAME=mycluster
-      - HADOOP_CONF_HA_ENABLED=true
-      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
-      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - SERVICE_PRECONDITION=namenode1:9870 namenode2:9870 zookeeper1:2181
     volumes:
-      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
-      - datanode1_data:/hadoop/dfs/data
+      - ./hadoop-config:/etc/hadoop
+    networks:
+      - hadoop-network
     depends_on:
       - namenode1
       - namenode2
+    restart: "no"
+
+  # ZKFC for automatic failover
+  zkfc1:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    hostname: zkfc1
+    container_name: zkfc1
+    command: ["hdfs", "zkfc"]
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - SERVICE_PRECONDITION=namenode1:9870 zookeeper1:2181
+    volumes:
+      - ./hadoop-config:/etc/hadoop
     networks:
-      - hadoop-net
+      - hadoop-network
+    depends_on:
+      - zkfc-init
+
+  zkfc2:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    hostname: zkfc2
+    container_name: zkfc2
+    command: ["hdfs", "zkfc"]
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - SERVICE_PRECONDITION=namenode2:9870 zookeeper1:2181
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode2
+
+  # DataNodes
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: datanode1
+    container_name: datanode1
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - SERVICE_PRECONDITION=namenode1:9870 namenode2:9870
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+      - dn1_data:/hadoop/dfs/data
+    ports:
+      - "9864:9864"
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode1
+      - namenode2
 
   datanode2:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode2
     hostname: datanode2
+    container_name: datanode2
     environment:
-      - HADOOP_SLAVE_SERVICES=datanode
       - CLUSTER_NAME=mycluster
-      - HADOOP_CONF_HA_ENABLED=true
-      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
-      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - SERVICE_PRECONDITION=namenode1:9870 namenode2:9870
     volumes:
-      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
-      - datanode2_data:/hadoop/dfs/data
-    depends_on:
-      - namenode1
-      - namenode2
-    networks:
-      - hadoop-net
-
-  spark:
-    build:
-      context: .
-      dockerfile: spark/Dockerfile
-    container_name: spark
+      - ./hadoop-config:/etc/hadoop
+      - dn2_data:/hadoop/dfs/data
     ports:
-      - "4040:4040"
-    volumes:
-      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
+      - "9865:9864"
+    networks:
+      - hadoop-network
     depends_on:
       - namenode1
       - namenode2
-      - datanode1
-      - datanode2
-      - journalnode
-      - zookeeper
+
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: datanode3
+    container_name: datanode3
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - SERVICE_PRECONDITION=namenode1:9870 namenode2:9870
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+      - dn3_data:/hadoop/dfs/data
+    ports:
+      - "9866:9864"
     networks:
-      - hadoop-net
+      - hadoop-network
+    depends_on:
+      - namenode1
+      - namenode2
+
+  # YARN ResourceManager HA
+  resourcemanager1:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    hostname: resourcemanager1
+    container_name: resourcemanager1
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - YARN_CONF_yarn_resourcemanager_ha_enabled=true
+      - YARN_CONF_yarn_resourcemanager_ha_rm___ids=rm1,rm2
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager1
+      - YARN_CONF_yarn_resourcemanager_cluster___id=yarn-cluster
+      - YARN_CONF_yarn_resourcemanager_recovery_enabled=true
+      - YARN_CONF_yarn_resourcemanager_store_class=org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore
+      - SERVICE_PRECONDITION=namenode1:9870 namenode2:9870
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+    ports:
+      - "8088:8088"
+    networks:
+      - hadoop-network
+    depends_on:
+      - namenode1
+      - namenode2
+
+  resourcemanager2:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    hostname: resourcemanager2
+    container_name: resourcemanager2
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - YARN_CONF_yarn_resourcemanager_ha_enabled=true
+      - YARN_CONF_yarn_resourcemanager_ha_rm___ids=rm1,rm2
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager2
+      - YARN_CONF_yarn_resourcemanager_cluster___id=yarn-cluster
+      - YARN_CONF_yarn_resourcemanager_recovery_enabled=true
+      - YARN_CONF_yarn_resourcemanager_store_class=org.apache.hadoop.yarn.server.resourcemanager.recovery.ZKRMStateStore
+      - SERVICE_PRECONDITION=namenode1:9870 namenode2:9870 resourcemanager1:8088
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+    ports:
+      - "8089:8088"
+    networks:
+      - hadoop-network
+    depends_on:
+      - resourcemanager1
+
+  # NodeManager
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    hostname: nodemanager1
+    container_name: nodemanager1
+    environment:
+      - CLUSTER_NAME=mycluster
+      - CORE_CONF_fs_defaultFS=hdfs://mycluster
+      - CORE_CONF_ha_zookeeper_quorum=zookeeper1:2181,zookeeper2:2181,zookeeper3:2181
+      - YARN_CONF_yarn_resourcemanager_ha_enabled=true
+      - YARN_CONF_yarn_resourcemanager_ha_rm___ids=rm1,rm2
+      - SERVICE_PRECONDITION=resourcemanager1:8088 resourcemanager2:8088
+    volumes:
+      - ./hadoop-config:/etc/hadoop
+    ports:
+      - "8042:8042"
+    networks:
+      - hadoop-network
+    depends_on:
+      - resourcemanager1
+      - resourcemanager2
+
+  # Spark Master
+  spark-master:
+    image: bitnami/spark:3.5.0
+    hostname: spark-master
+    container_name: spark-master
+    user: root
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    volumes:
+      - ./spark-config:/opt/bitnami/spark/conf
+      - spark_master_data:/opt/bitnami/spark/work
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - hadoop-network
+
+  # Spark Workers
+  spark-worker-1:
+    image: bitnami/spark:3.5.0
+    hostname: spark-worker-1
+    container_name: spark-worker-1
+    user: root
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    volumes:
+      - ./spark-config:/opt/bitnami/spark/conf
+      - spark_worker1_data:/opt/bitnami/spark/work
+    ports:
+      - "8081:8081"
+    networks:
+      - hadoop-network
+    depends_on:
+      - spark-master
+
+  spark-worker-2:
+    image: bitnami/spark:3.5.0
+    hostname: spark-worker-2
+    container_name: spark-worker-2
+    user: root
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    volumes:
+      - ./spark-config:/opt/bitnami/spark/conf
+      - spark_worker2_data:/opt/bitnami/spark/work
+    ports:
+      - "8082:8081"
+    networks:
+      - hadoop-network
+    depends_on:
+      - spark-master
+
+  # History Server
+  spark-history-server:
+    image: bitnami/spark:3.5.0
+    hostname: spark-history-server
+    container_name: spark-history-server
+    user: root
+    command: ["bin/spark-class", "org.apache.spark.deploy.history.HistoryServer"]
+    environment:
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=hdfs://mycluster/spark-logs
+      - SPARK_USER=spark
+    volumes:
+      - ./spark-config:/opt/bitnami/spark/conf
+    ports:
+      - "18080:18080"
+    networks:
+      - hadoop-network
+    depends_on:
+      - spark-master
+      - namenode1
+      - namenode2
 
 volumes:
-  journalnode_data:
-  namenode1_data:
-  namenode2_data:
-  datanode1_data:
-  datanode2_data:
+  # ZooKeeper volumes
+  zk1_data:
+  zk1_logs:
+  zk2_data:
+  zk2_logs:
+  zk3_data:
+  zk3_logs:
 
+  # JournalNode volumes
+  jn1_data:
+  jn2_data:
+  jn3_data:
+
+  # NameNode volumes
+  nn1_data:
+  nn2_data:
+
+  # DataNode volumes
+  dn1_data:
+  dn2_data:
+  dn3_data:
+
+  # Spark volumes
+  spark_master_data:
+  spark_worker1_data:
+  spark_worker2_data:
 
 networks:
-  hadoop-net:
+  hadoop-network:
+    driver: bridge
