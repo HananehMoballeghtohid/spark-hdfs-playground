@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: zookeeper:3.7
+    container_name: zookeeper
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - hadoop-net
+
+  journalnode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: journalnode
+    hostname: journalnode
+    environment:
+      - HADOOP_MASTER_SERVICES=journalnode
+      - CLUSTER_NAME=mycluster
+      - HADOOP_CONF_HA_ENABLED=true
+      - HADOOP_CONF_JOURNALNODE_URI=qjournal://journalnode:8485/mycluster
+    volumes:
+      - journalnode_data:/hadoop/journalnode
+    networks:
+      - hadoop-net
+
+  namenode1:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode1
+    hostname: namenode1
+    ports:
+      - "9870:9870"
+      - "8020:8020"
+    environment:
+      - HADOOP_MASTER_SERVICES=namenode
+      - CLUSTER_NAME=mycluster
+      - HADOOP_CONF_HA_ENABLED=true
+      - HADOOP_CONF_NAMENODE_ID=nn1
+      - HADOOP_CONF_JOURNALNODE_URI=qjournal://journalnode:8485/mycluster
+      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
+      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
+    volumes:
+      - namenode1_data:/hadoop/dfs/name
+      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
+    depends_on:
+      - journalnode
+      - zookeeper
+    networks:
+      - hadoop-net
+
+  namenode2:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode2
+    hostname: namenode2
+    ports:
+      - "9871:9870"
+      - "8021:8020"
+    environment:
+      - HADOOP_MASTER_SERVICES=namenode
+      - CLUSTER_NAME=mycluster
+      - HADOOP_CONF_HA_ENABLED=true
+      - HADOOP_CONF_NAMENODE_ID=nn2
+      - HADOOP_CONF_JOURNALNODE_URI=qjournal://journalnode:8485/mycluster
+      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
+      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
+    volumes:
+      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
+      - namenode2_data:/hadoop/dfs/name
+    depends_on:
+      - journalnode
+      - zookeeper
+    networks:
+      - hadoop-net
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    hostname: datanode1
+    environment:
+      - HADOOP_SLAVE_SERVICES=datanode
+      - CLUSTER_NAME=mycluster
+      - HADOOP_CONF_HA_ENABLED=true
+      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
+      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
+    volumes:
+      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
+      - datanode1_data:/hadoop/dfs/data
+    depends_on:
+      - namenode1
+      - namenode2
+    networks:
+      - hadoop-net
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    hostname: datanode2
+    environment:
+      - HADOOP_SLAVE_SERVICES=datanode
+      - CLUSTER_NAME=mycluster
+      - HADOOP_CONF_HA_ENABLED=true
+      - HADOOP_CONF_FS_DEFAULTFS=hdfs://mycluster
+      - HADOOP_CONF_ZOOKEEPER_QUORUM=zookeeper:2181
+    volumes:
+      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
+      - datanode2_data:/hadoop/dfs/data
+    depends_on:
+      - namenode1
+      - namenode2
+    networks:
+      - hadoop-net
+
+  spark:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    container_name: spark
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./conf:/opt/hadoop-3.2.1/etc/hadoop
+    depends_on:
+      - namenode1
+      - namenode2
+      - datanode1
+      - datanode2
+      - journalnode
+      - zookeeper
+    networks:
+      - hadoop-net
+
+volumes:
+  journalnode_data:
+  namenode1_data:
+  namenode2_data:
+  datanode1_data:
+  datanode2_data:
+
+
+networks:
+  hadoop-net:
