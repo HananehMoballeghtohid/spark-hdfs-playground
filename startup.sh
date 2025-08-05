@@ -1,83 +1,54 @@
 #!/usr/bin/env bash
 
-set -e
+echo "Starting Hadoop HA Cluster initialization..."
 
-echo "Creating necessary directories..."
-mkdir -p ./hadoop-config
-mkdir -p ./spark-config
+# Start Zookeeper ensemble first
+echo "Starting Zookeeper ensemble..."
+docker-compose -f docker-compose-ha.yml up -d zookeeper1 zookeeper2 zookeeper3
 
-echo "Setting correct permissions..."
-chmod -R 777 ./spark-config
+# Wait for Zookeeper to be ready
+echo "Waiting for Zookeeper to be ready..."
+sleep 10
 
-echo "Starting ZooKeeper cluster..."
-docker-compose up -d zookeeper1 zookeeper2 zookeeper3
-echo "Waiting for ZooKeeper to stabilize..."
-sleep 30
-
+# Start JournalNodes
 echo "Starting JournalNodes..."
-docker-compose up -d journalnode1 journalnode2 journalnode3
+docker-compose -f docker-compose-ha.yml up -d journalnode1 journalnode2 journalnode3
+
+# Wait for JournalNodes to be ready
 echo "Waiting for JournalNodes to be ready..."
-sleep 20
-
-echo "Starting primary NameNode..."
-docker-compose up -d namenode1
 sleep 10
 
-# Only format if not already formatted
-echo "Checking if HDFS needs formatting..."
-docker-compose exec -T namenode1 hdfs namenode -format -clusterId mycluster -force 2>/dev/null || echo "HDFS already formatted or format failed"
+# Format the first NameNode
+echo "Formatting NameNode1..."
+docker-compose -f docker-compose-ha.yml run --rm namenode1 hdfs namenode -format -force
 
-echo "Initializing HA in ZooKeeper..."
-docker-compose exec -T namenode1 hdfs zkfc -formatZK -force 2>/dev/null || echo "ZK already initialized"
+# Start the first NameNode
+echo "Starting NameNode1..."
+docker-compose -f docker-compose-ha.yml up -d namenode1
 
-echo "Starting standby NameNode..."
-docker-compose up -d namenode2
-sleep 10
+# Wait for NameNode1 to be ready
+echo "Waiting for NameNode1 to be ready..."
+sleep 15
 
-echo "Bootstrapping standby NameNode..."
-docker-compose exec -T namenode2 hdfs namenode -bootstrapStandby -force 2>/dev/null || echo "Standby already bootstrapped"
+# Bootstrap the standby NameNode
+echo "Bootstrapping NameNode2..."
+docker-compose -f docker-compose-ha.yml run --rm namenode2 hdfs namenode -bootstrapStandby
 
-echo "Starting ZKFC controllers..."
-docker-compose up -d zkfc1 zkfc2
-sleep 10
+# Format ZKFC on both NameNodes
+echo "Formatting ZKFC..."
+docker-compose -f docker-compose-ha.yml exec namenode1 hdfs zkfc -formatZK -force
 
-echo "Starting DataNodes..."
-docker-compose up -d datanode1 datanode2 datanode3
-sleep 20
+# Start the second NameNode
+echo "Starting NameNode2..."
+docker-compose -f docker-compose-ha.yml up -d namenode2
 
-echo "Starting YARN ResourceManagers..."
-docker-compose up -d resourcemanager1 resourcemanager2
-sleep 20
+# Start remaining services
+echo "Starting remaining services..."
+docker-compose -f docker-compose-ha.yml up -d
 
-echo "Starting NodeManager..."
-docker-compose up -d nodemanager1
-sleep 10
+echo "Hadoop HA Cluster initialization complete!"
+echo "Access NameNode1 UI at: http://localhost:9870"
+echo "Access NameNode2 UI at: http://localhost:9871"
+echo "Access ResourceManager1 UI at: http://localhost:8088"
+echo "Access ResourceManager2 UI at: http://localhost:8089"
 
-echo "Creating HDFS directories for Spark..."
-docker-compose exec -T namenode1 hdfs dfs -mkdir -p /spark-logs 2>/dev/null || true
-docker-compose exec -T namenode1 hdfs dfs -mkdir -p /spark-warehouse 2>/dev/null || true
-docker-compose exec -T namenode1 hdfs dfs -chmod 777 /spark-logs 2>/dev/null || true
-docker-compose exec -T namenode1 hdfs dfs -chmod 777 /spark-warehouse 2>/dev/null || true
-
-echo "Starting Spark cluster..."
-docker-compose up -d spark-master
-sleep 10
-docker-compose up -d spark-worker-1 spark-worker-2
-sleep 5
-docker-compose up -d spark-history-server
-
-echo "========================================="
-echo "Cluster started successfully!"
-echo "========================================="
-echo "HDFS UI (NameNode1): http://localhost:9870"
-echo "HDFS UI (NameNode2): http://localhost:9871"
-echo "YARN UI (RM1): http://localhost:8088"
-echo "YARN UI (RM2): http://localhost:8089"
-echo "Spark Master UI: http://localhost:8080"
-echo "Spark History Server: http://localhost:18080"
-echo "========================================="
-
-# Show cluster status
-echo ""
-echo "Checking HDFS status..."
-docker-compose exec -T namenode1 hdfs dfsadmin -report || echo "HDFS not ready yet"

@@ -1,0 +1,314 @@
+version: "3"
+
+services:
+  # Zookeeper Ensemble
+  zookeeper1:
+    image: zookeeper:3.7
+    container_name: zookeeper1
+    restart: always
+    hostname: zookeeper1
+    ports:
+      - 2181:2181
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zookeeper1:2888:3888;2181 server.2=zookeeper2:2888:3888;2181 server.3=zookeeper3:2888:3888;2181
+    volumes:
+      - zookeeper1_data:/data
+      - zookeeper1_logs:/datalog
+
+  zookeeper2:
+    image: zookeeper:3.7
+    container_name: zookeeper2
+    restart: always
+    hostname: zookeeper2
+    ports:
+      - 2182:2181
+    environment:
+      ZOO_MY_ID: 2
+      ZOO_SERVERS: server.1=zookeeper1:2888:3888;2181 server.2=zookeeper2:2888:3888;2181 server.3=zookeeper3:2888:3888;2181
+    volumes:
+      - zookeeper2_data:/data
+      - zookeeper2_logs:/datalog
+
+  zookeeper3:
+    image: zookeeper:3.7
+    container_name: zookeeper3
+    restart: always
+    hostname: zookeeper3
+    ports:
+      - 2183:2181
+    environment:
+      ZOO_MY_ID: 3
+      ZOO_SERVERS: server.1=zookeeper1:2888:3888;2181 server.2=zookeeper2:2888:3888;2181 server.3=zookeeper3:2888:3888;2181
+    volumes:
+      - zookeeper3_data:/data
+      - zookeeper3_logs:/datalog
+
+  # Journal Nodes
+  journalnode1:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: journalnode1
+    restart: always
+    hostname: journalnode1
+    command: ["hdfs", "journalnode"]
+    ports:
+      - 8485:8485
+    volumes:
+      - journalnode1_data:/hadoop/dfs/journaldata
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+    env_file:
+      - ./hadoop-ha.env
+
+  journalnode2:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: journalnode2
+    restart: always
+    hostname: journalnode2
+    command: ["hdfs", "journalnode"]
+    ports:
+      - 8486:8485
+    volumes:
+      - journalnode2_data:/hadoop/dfs/journaldata
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+    env_file:
+      - ./hadoop-ha.env
+
+  journalnode3:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: journalnode3
+    restart: always
+    hostname: journalnode3
+    command: ["hdfs", "journalnode"]
+    ports:
+      - 8487:8485
+    volumes:
+      - journalnode3_data:/hadoop/dfs/journaldata
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+    env_file:
+      - ./hadoop-ha.env
+
+  # NameNodes
+  namenode1:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode1
+    restart: always
+    hostname: namenode1
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode1:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - HDFS_CONF_dfs_namenode_name_dir=file:///hadoop/dfs/name
+      - SERVICE_PRECONDITION=journalnode1:8485 journalnode2:8485 journalnode3:8485 zookeeper1:2181 zookeeper2:2181 zookeeper3:2181
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - journalnode1
+      - journalnode2
+      - journalnode3
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+
+  namenode2:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode2
+    restart: always
+    hostname: namenode2
+    ports:
+      - 9871:9870
+      - 9001:9000
+    volumes:
+      - hadoop_namenode2:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+      - HDFS_CONF_dfs_namenode_name_dir=file:///hadoop/dfs/name
+      - SERVICE_PRECONDITION=namenode1:9870 journalnode1:8485 journalnode2:8485 journalnode3:8485 zookeeper1:2181 zookeeper2:2181 zookeeper3:2181
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - namenode1
+      - journalnode1
+      - journalnode2
+      - journalnode3
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+
+  # DataNodes
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    restart: always
+    hostname: datanode1
+    volumes:
+      - hadoop_datanode1:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9870 namenode2:9870"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - namenode1
+      - namenode2
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    restart: always
+    hostname: datanode2
+    volumes:
+      - hadoop_datanode2:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9870 namenode2:9870"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - namenode1
+      - namenode2
+
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode3
+    restart: always
+    hostname: datanode3
+    volumes:
+      - hadoop_datanode3:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9870 namenode2:9870"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - namenode1
+      - namenode2
+
+  # ResourceManagers
+  resourcemanager1:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager1
+    restart: always
+    hostname: resourcemanager1
+    ports:
+      - 8088:8088
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9000 namenode1:9870 namenode2:9000 namenode2:9870 datanode1:9864 datanode2:9864 datanode3:9864"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - namenode1
+      - namenode2
+      - datanode1
+      - datanode2
+      - datanode3
+
+  resourcemanager2:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager2
+    restart: always
+    hostname: resourcemanager2
+    ports:
+      - 8089:8088
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9000 namenode1:9870 namenode2:9000 namenode2:9870 datanode1:9864 datanode2:9864 datanode3:9864"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - namenode1
+      - namenode2
+      - datanode1
+      - datanode2
+      - datanode3
+
+  # NodeManagers
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager1
+    restart: always
+    hostname: nodemanager1
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9000 namenode1:9870 namenode2:9000 namenode2:9870 datanode1:9864 resourcemanager1:8088 resourcemanager2:8088"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - resourcemanager1
+      - resourcemanager2
+
+  nodemanager2:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager2
+    restart: always
+    hostname: nodemanager2
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9000 namenode1:9870 namenode2:9000 namenode2:9870 datanode2:9864 resourcemanager1:8088 resourcemanager2:8088"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - resourcemanager1
+      - resourcemanager2
+
+  nodemanager3:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager3
+    restart: always
+    hostname: nodemanager3
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9000 namenode1:9870 namenode2:9000 namenode2:9870 datanode3:9864 resourcemanager1:8088 resourcemanager2:8088"
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - resourcemanager1
+      - resourcemanager2
+
+  # History Server
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    restart: always
+    hostname: historyserver
+    ports:
+      - 8188:8188
+    environment:
+      SERVICE_PRECONDITION: "namenode1:9000 namenode1:9870 namenode2:9000 namenode2:9870 datanode1:9864 datanode2:9864 datanode3:9864 resourcemanager1:8088 resourcemanager2:8088"
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - ./hadoop-ha.env
+    depends_on:
+      - namenode1
+      - namenode2
+      - resourcemanager1
+      - resourcemanager2
+
+volumes:
+  # Zookeeper volumes
+  zookeeper1_data:
+  zookeeper1_logs:
+  zookeeper2_data:
+  zookeeper2_logs:
+  zookeeper3_data:
+  zookeeper3_logs:
+
+  # JournalNode volumes
+  journalnode1_data:
+  journalnode2_data:
+  journalnode3_data:
+
+  # NameNode volumes
+  hadoop_namenode1:
+  hadoop_namenode2:
+
+  # DataNode volumes
+  hadoop_datanode1:
+  hadoop_datanode2:
+  hadoop_datanode3:
+
+  # History Server volume
+  hadoop_historyserver:
+
+networks:
+  default:
+    name: hadoop-ha-network
