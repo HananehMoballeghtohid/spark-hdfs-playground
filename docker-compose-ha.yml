@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   # Zookeeper Ensemble
   zookeeper1:
@@ -283,6 +281,195 @@ services:
       - resourcemanager1
       - resourcemanager2
 
+  # Spark Master
+  spark-master:
+    image: bitnami/spark:3.5.0
+    container_name: spark-master
+    restart: always
+    hostname: spark-master
+    ports:
+      - 8080:8080
+      - 7077:7077
+      - 4040:4040
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_DAEMON_MEMORY=2g
+      - SPARK_MASTER_OPTS=-Dspark.deploy.defaultCores=2
+      - SPARK_USER=spark
+    volumes:
+      - spark_master_data:/bitnami/spark
+      - ./hadoop-config:/opt/hadoop-config:ro
+      - ./spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+    env_file:
+      - ./spark.env
+    depends_on:
+      - namenode1
+      - namenode2
+      - resourcemanager1
+      - resourcemanager2
+
+  # Spark Workers
+  spark-worker1:
+    image: bitnami/spark:3.5.0
+    container_name: spark-worker1
+    restart: always
+    hostname: spark-worker1
+    ports:
+      - 8081:8081
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4g
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_WORKER_DIR=/opt/bitnami/spark/work
+      - SPARK_USER=spark
+    volumes:
+      - spark_worker1_data:/bitnami/spark
+      - spark_worker1_work:/opt/bitnami/spark/work
+      - ./hadoop-config:/opt/hadoop-config:ro
+      - ./spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+    env_file:
+      - ./spark.env
+    depends_on:
+      - spark-master
+
+  spark-worker2:
+    image: bitnami/spark:3.5.0
+    container_name: spark-worker2
+    restart: always
+    hostname: spark-worker2
+    ports:
+      - 8082:8081
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4g
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_WORKER_DIR=/opt/bitnami/spark/work
+      - SPARK_USER=spark
+    volumes:
+      - spark_worker2_data:/bitnami/spark
+      - spark_worker2_work:/opt/bitnami/spark/work
+      - ./hadoop-config:/opt/hadoop-config:ro
+      - ./spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+    env_file:
+      - ./spark.env
+    depends_on:
+      - spark-master
+
+  spark-worker3:
+    image: bitnami/spark:3.5.0
+    container_name: spark-worker3
+    restart: always
+    hostname: spark-worker3
+    ports:
+      - 8083:8081
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4g
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_WORKER_DIR=/opt/bitnami/spark/work
+      - SPARK_USER=spark
+    volumes:
+      - spark_worker3_data:/bitnami/spark
+      - spark_worker3_work:/opt/bitnami/spark/work
+      - ./hadoop-config:/opt/hadoop-config:ro
+      - ./spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+    env_file:
+      - ./spark.env
+    depends_on:
+      - spark-master
+
+  # Spark History Server (using custom command)
+  spark-history-server:
+    image: bitnami/spark:3.5.0
+    container_name: spark-history-server
+    restart: always
+    hostname: spark-history-server
+    ports:
+      - 18080:18080
+    command: |
+      bash -c "
+        cp /opt/hadoop-config/*.xml /opt/bitnami/spark/conf/
+        /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+      "
+    environment:
+      - SPARK_DAEMON_MEMORY=1g
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=hdfs://hadoop-cluster/spark-logs -Dspark.history.ui.port=18080
+      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
+      - SPARK_USER=spark
+      - HADOOP_CONF_DIR=/opt/bitnami/spark/conf
+    volumes:
+      - ./hadoop-config:/opt/hadoop-config:ro
+      - ./spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+    depends_on:
+      - namenode1
+      - namenode2
+      - spark-master
+
+  # Jupyter Notebook with PySpark
+  jupyter-spark:
+    image: jupyter/pyspark-notebook:spark-3.5.0
+    container_name: jupyter-spark
+    restart: always
+    hostname: jupyter-spark
+    ports:
+      - 8888:8888
+      - 4041:4040
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - SPARK_MASTER=spark://spark-master:7077
+      - PYSPARK_SUBMIT_ARGS=--master spark://spark-master:7077 --conf spark.executor.memory=2g --conf spark.executor.cores=2 pyspark-shell
+      - GRANT_SUDO=yes
+      - JUPYTER_TOKEN=spark123
+      - NB_UID=1000
+      - NB_GID=100
+      - CHOWN_HOME=yes
+      - CHOWN_HOME_OPTS=-R
+    volumes:
+      - jupyter_notebooks:/home/jovyan/work
+      - ./hadoop-config:/opt/hadoop/conf:ro
+      - ./spark-defaults.conf:/usr/local/spark/conf/spark-defaults.conf:ro
+    user: "1000"
+    command: >
+      bash -c "
+        # Wait for Hadoop config to be available
+        while [ ! -f /opt/hadoop/conf/core-site.xml ]; do
+          echo 'Waiting for Hadoop config files...'
+          sleep 2
+        done
+
+        # Copy Hadoop configs
+        sudo cp /opt/hadoop/conf/*.xml /usr/local/spark/conf/
+
+        # Install additional packages
+        pip install --no-cache-dir pandas numpy matplotlib seaborn plotly scikit-learn
+
+        # Start Jupyter
+        start-notebook.sh --NotebookApp.token='spark123'
+      "
+    depends_on:
+      - spark-master
+      - namenode1
+      - namenode2
+
 volumes:
   # Zookeeper volumes
   zookeeper1_data:
@@ -309,6 +496,16 @@ volumes:
   # History Server volume
   hadoop_historyserver:
 
+  # Spark volumes
+  spark_master_data:
+  spark_worker1_data:
+  spark_worker2_data:
+  spark_worker3_data:
+  spark_worker1_work:
+  spark_worker2_work:
+  spark_worker3_work:
+  jupyter_notebooks:
+
 networks:
   default:
-    name: hadoop-ha-network
+    name: hadoop-spark-ha-network
