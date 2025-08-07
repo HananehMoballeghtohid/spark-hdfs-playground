@@ -85,7 +85,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.computer_technology.TripAnalysis</mainClass>
+                            <mainClass>com.computer_technology.LongTrips</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
