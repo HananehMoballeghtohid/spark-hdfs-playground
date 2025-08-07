@@ -21,6 +21,7 @@ public class LongTrips {
 
             // Sort by duration_minutes descending
             Dataset<Row> result = filtered.orderBy(col("duration_minutes").desc());
+            result.show();
 
             // Write to Parquet
             result.write()
