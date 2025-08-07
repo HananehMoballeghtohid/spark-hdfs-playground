@@ -1,36 +1,38 @@
-FROM openjdk:8-jdk-slim
-
-ARG SPARK_VERSION=3.2.1
-ARG HADOOP_VERSION=3.2.0
-ARG HADOOP_VERSION_SPARK=3.2
-ENV SPARK_HOME=/opt/spark
-
-# Install wget and fix SSL
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates wget && \
-    update-ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Spark
-RUN wget https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION_SPARK}.tgz -O /tmp/spark.tgz \
-    && tar -xzf /tmp/spark.tgz -C /opt \
-    && mv /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION_SPARK} ${SPARK_HOME} \
-    && rm /tmp/spark.tgz
-
-# Download required Hadoop jars
-RUN for jar in hadoop-client-api hadoop-client-runtime hadoop-common hadoop-hdfs hadoop-hdfs-client hadoop-auth; do \
-    wget --timeout=30 --tries=5 https://repo1.maven.org/maven2/org/apache/hadoop/$jar/${HADOOP_VERSION}/$jar-${HADOOP_VERSION}.jar -P ${SPARK_HOME}/jars/ ; \
-    done
+# Build stage
+FROM maven:3.8.4-openjdk-11-slim AS build
 
 WORKDIR /app
 
-RUN mkdir -p /etc/hadoop
+# Set Spark environment
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$PATH:$SPARK_HOME/bin
 
-COPY ../config/hdfs-site.xml /etc/hadoop/hdfs-site.xml
-COPY ../config/core-site.xml /etc/hadoop/core-site.xml
+# Install necessary tools
+RUN apt-get update && apt-get install -y \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV HADOOP_CONF_DIR=/etc/hadoop
-ENV SPARK_CONF_DIR=$SPARK_HOME/conf
+# Install Spark (minimal - just what's needed for spark-submit)
+RUN wget -q https://archive.apache.org/dist/spark/spark-3.5.0/spark-3.5.0-bin-hadoop3.tgz \
+    && tar -xzf spark-3.5.0-bin-hadoop3.tgz \
+    && mv spark-3.5.0-bin-hadoop3 /opt/spark \
+    && rm spark-3.5.0-bin-hadoop3.tgz
 
-# This command keeps the container running
-CMD ["tail", "-f", "/dev/null"]
+# Copy Maven files first for better caching
+COPY pom.xml ./
+RUN mvn dependency:go-offline -B
+
+# Copy source and build
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# Expose Spark UI ports (optional)
+EXPOSE 4040 4041 4042
+
+# Default spark-submit command
+CMD ["spark-submit", \
+     "--class", "com.computer-technology-sharif.SparkHadoopHAApp", \
+     "--master", "yarn", \
+     "--deploy-mode", "client", \
+     "app.jar"]
+

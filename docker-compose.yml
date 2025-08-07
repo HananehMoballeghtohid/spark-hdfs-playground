@@ -470,6 +470,40 @@ services:
       - namenode1
       - namenode2
 
+  java-spark-app:
+    build:
+      context: spark
+      dockerfile: Dockerfile
+    container_name: java-spark-app
+    restart: unless-stopped
+    hostname: java-spark-app
+    ports:
+      - "4042:4040" # Spark UI port
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - HADOOP_CONF_DIR=/opt/hadoop/conf
+      - SPARK_CONF_DIR=/opt/bitnami/spark/conf
+      - JAVA_OPTS=-Xmx2g -XX:+UseG1GC
+    volumes:
+      - ./hadoop-config:/opt/hadoop/conf:ro
+      - ./spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+      - ./target:/app/target
+      - ./logs:/app/logs
+    depends_on:
+      - namenode1
+      - namenode2
+      - datanode1
+      - datanode2
+      - datanode3
+      - spark-master
+      - spark-worker1
+      - spark-worker2
+      - spark-worker3
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
+    command: tail -f /dev/null
+
 volumes:
   # Zookeeper volumes
   zookeeper1_data:
