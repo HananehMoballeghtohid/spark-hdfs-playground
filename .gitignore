@@ -1,3 +1,4 @@
+temp-taxi-data/*
 data/*
 temp-taxi-data/
 spark/target/
