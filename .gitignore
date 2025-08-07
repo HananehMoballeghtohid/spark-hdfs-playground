@@ -1,1 +1,3 @@
 data/*
+temp-taxi-data/
+spark/target/

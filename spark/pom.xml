@@ -5,7 +5,7 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.computer-technology-sharif</groupId>
+    <groupId>com.computer_technology</groupId>
     <artifactId>spark-hadoop-ha-app</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
@@ -36,7 +36,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Hadoop Client - PROVIDED scope -->
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-client</artifactId>
@@ -44,14 +43,12 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Only include non-provided dependencies -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>1.7.36</version>
         </dependency>
 
-        <!-- JSON Processing - only if not provided by Spark -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
@@ -66,13 +63,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Testing -->
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
     <build>
@@ -82,8 +72,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <source>8</source>
+                    <target>8</target>
                 </configuration>
             </plugin>
 
@@ -95,7 +85,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.computer-technology-sharif.SparkHadoopHAApp</mainClass>
+                            <mainClass>com.computer_technology.TripAnalysis</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
