@@ -33,7 +33,5 @@ Replace [job-name] with the name of your job class. This script:
 > **_NOTE:_**  Make sure all scripts have execute permissions ```chmod +x *.sh``` before running them.
 
 
-Google drive links to the videos:
-https://drive.google.com/drive/folders/1vSDA0EVIccuH5iL9y3fSHCK3kTtXEU-O?usp=sharing
-GitHub link:
-https://github.com/HananehMoballeghtohid/spark-hdfs-playground
+- Google drive links to the videos: https://drive.google.com/drive/folders/1vSDA0EVIccuH5iL9y3fSHCK3kTtXEU-O?usp=sharing
+- GitHub link: https://github.com/HananehMoballeghtohid/spark-hdfs-playground
