@@ -35,3 +35,5 @@ Replace [job-name] with the name of your job class. This script:
 
 Google drive links to the videos:
 https://drive.google.com/drive/folders/1vSDA0EVIccuH5iL9y3fSHCK3kTtXEU-O?usp=sharing
+GitHub link:
+https://github.com/HananehMoballeghtohid/spark-hdfs-playground
